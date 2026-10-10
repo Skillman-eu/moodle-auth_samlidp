@@ -68,29 +68,28 @@ class External extends \SimpleSAML\Auth\Source {
             $state['moodle:AuthID'] = $this->authId;
             $state_id = \SimpleSAML\Auth\State::saveState($state, self::STATE_IDENT);
             $return_to = \SimpleSAML\Module::getModuleURL('moodle/resume.php', array('State' => $state_id));
-            $auth_page = $this->config['login_url'] . '?ReturnTo=' . $return_to;
             $httpUtils = new \SimpleSAML\Utils\HTTP();
-            $httpUtils->redirectUntrustedURL($auth_page, array('ReturnTo' => $return_to));
+            $httpUtils->redirectUntrustedURL($this->config['login_url'], array('ReturnTo' => $return_to));
         }
     }
 
     public static function resume() {
-        if (!isset($_REQUEST['State'])) {
-            throw new SimpleSAML_Error_BadRequest('Missing "State" parameter.');
+        if (!isset($_REQUEST['State']) || !is_string($_REQUEST['State']) || $_REQUEST['State'] === '') {
+            throw new \SimpleSAML\Error\BadRequest('Missing or invalid "State" parameter.');
         }
         $state_id = (string)$_REQUEST['State'];
 
         $state = \SimpleSAML\Auth\State::loadState($state_id, self::STATE_IDENT);
         $source = \SimpleSAML\Auth\Source::getById($state['moodle:AuthID']);
         if ($source === NULL) {
-            throw new \SimpleSAML\Error\Exception('Could not find authentication source with id ' . $state[self::AUTHID]);
+            throw new \SimpleSAML\Error\Exception('Could not find authentication source with id ' . $state['moodle:AuthID']);
         }
 
         if (! ($source instanceof self)) {
             throw new \SimpleSAML\Error\Exception('Authentication source type changed.');
         }
 
-        $user = $source->getUser($state);
+        $user = $source->getUser();
         if ($user === NULL) {
             throw new \SimpleSAML\Error\Exception('User not authenticated after login page.');
         }
@@ -104,18 +103,20 @@ class External extends \SimpleSAML\Auth\Source {
         $uid = 0;
         if (isset($_COOKIE[$this->config['cookie_name']]) && $_COOKIE[$this->config['cookie_name']]) {
             $str_cookie = $_COOKIE[$this->config['cookie_name']];
-            # cookie created by: "setcookie($cookieName{'cookie_name'}, hash_hmac('sha1', $salt.$account->uid, $salt).':'.$uid, 0, $sspConfig->getValue('session.cookie.path'));"
-            # in auth/samlidp/auth.php in Moodle
+            // The cookie is an HMAC followed by the Moodle user ID.
+            if (!is_string($str_cookie)) {
+                throw new \SimpleSAML\Error\BadRequest('Invalid authentication cookie.');
+            }
             $arr_cookie = explode(':', $str_cookie);
 
             if ((isset($arr_cookie[0]) && $arr_cookie[0])
                 && (isset($arr_cookie[1]) && $arr_cookie[1])
             ) {
                 # make sure no one manipulated the hash or the uid in the cookie before we trust the uid
-                if (hash_hmac('sha1', $this->config['cookie_salt'].$arr_cookie[1], $this->config['cookie_salt']) == $arr_cookie[0]) {
+                if (hash_equals(hash_hmac('sha1', $this->config['cookie_salt'].$arr_cookie[1], $this->config['cookie_salt']), $arr_cookie[0])) {
                     $uid = (int)$arr_cookie[1];
                 } else {
-                    throw new SimpleSAML\Error\Exception('Cookie hash invalid.');
+                    throw new \SimpleSAML\Error\Exception('Cookie hash invalid.');
                 }
             }
         }
@@ -128,25 +129,33 @@ class External extends \SimpleSAML\Auth\Source {
         if ($uid) {
             # bootstrap moodle
             global $CFG, $DB;
-            define('CLI_SCRIPT', true);
-            define('WEB_CRON_EMULATED_CLI', 'defined');
+            if (!defined('CLI_SCRIPT')) {
+                define('CLI_SCRIPT', true);
+            }
+            if (!defined('WEB_CRON_EMULATED_CLI')) {
+                define('WEB_CRON_EMULATED_CLI', 'defined');
+            }
             $configphp = $this->config['moodle_coderoot']."/config.php";
             $userlib = $this->config['moodle_coderoot']."/user/profile/lib.php";
             if (file_exists($configphp)) {
                 require_once($configphp);
             } else {
-                throw new SimpleSAML\Error\Exception('Moodle app instantiation failure: cannot require()' . $configphp);
+                throw new \SimpleSAML\Error\Exception('Moodle app instantiation failure: cannot require()' . $configphp);
             }
 
             if (file_exists($userlib)) {
                 require_once($userlib);
             } else {
-                throw new SimpleSAML\Error\Exception('Moodle app instantiation failure: cannot require()' . $userlib);
+                throw new \SimpleSAML\Error\Exception('Moodle app instantiation failure: cannot require()' . $userlib);
             }
 
             # query for a user
             $user = $DB->get_record('user', array('id' => $uid));
+            if (!$user || !empty($user->deleted) || !empty($user->suspended)) {
+                return NULL;
+            }
             $profile_fields = profile_user_record($user->id, false);
+            $userattr = array();
 
             # simplesaml is somehow expecting a very weird structure in attributes ($user)
             # we also don't reveal user password, auth method, secret
@@ -180,12 +189,13 @@ class External extends \SimpleSAML\Auth\Source {
         session_destroy();
 
         $logout_url = $this->config['logout_url'];
+        $parameters = array();
         if (!empty($state['ReturnTo'])) {
-            $logout_url .= '?ReturnTo=' . $state['ReturnTo'];
+            $parameters['ReturnTo'] = $state['ReturnTo'];
         }
 
         $httpUtils = new \SimpleSAML\Utils\HTTP();
-        $httpUtils->redirectUntrustedURL($logout_url);
+        $httpUtils->redirectUntrustedURL($logout_url, $parameters);
         die();
     }
 }
