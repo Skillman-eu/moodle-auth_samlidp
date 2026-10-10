@@ -103,7 +103,7 @@ class provider implements \core_privacy\local\metadata\provider, \core_privacy\l
         );
         $profilefields = $DB->get_records('user_info_field', array());
         foreach ($profilefields as $profilefield) {
-            $exportedfields{'profile_field_'.$profilefield->shortname} = 'privacy:metadata:profilefield';
+            $exportedfields['profile_field_'.$profilefield->shortname] = 'privacy:metadata:profilefield';
         }
         $items->add_external_location_link(
             'samlidp_provider',

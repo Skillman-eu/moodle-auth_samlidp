@@ -42,11 +42,11 @@ class auth_plugin_samlidp extends auth_plugin_base {
         global $CFG;
         $this->authtype = 'samlidp';
         $this->config = get_config(self::COMPONENT_NAME);
-        $this->simplesamlAutoloadPhp = $this->config->simplesaml_coderoot.'/lib/_autoload.php';
+        $this->simplesamlAutoloadPhp = ($this->config->simplesaml_coderoot ?? '').'/lib/_autoload.php';
     }
 
     /**
-     * Saves $_GET{'ReturnTo'}
+     * Saves $_GET['ReturnTo']
      *
      * @param void
      * @return void
