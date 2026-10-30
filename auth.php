@@ -42,7 +42,11 @@ class auth_plugin_samlidp extends auth_plugin_base {
         global $CFG;
         $this->authtype = 'samlidp';
         $this->config = get_config(self::COMPONENT_NAME);
-        $this->simplesamlAutoloadPhp = ($this->config->simplesaml_coderoot ?? '').'/lib/_autoload.php';
+        $ssproot = rtrim($this->config->simplesaml_coderoot ?? '', '/\\');
+        $this->simplesamlAutoloadPhp = $ssproot.'/src/_autoload.php';
+        if (!is_file($this->simplesamlAutoloadPhp)) {
+            $this->simplesamlAutoloadPhp = $ssproot.'/lib/_autoload.php';
+        }
     }
 
     /**

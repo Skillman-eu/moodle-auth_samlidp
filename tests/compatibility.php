@@ -19,7 +19,7 @@ namespace SimpleSAML\Auth {
     abstract class Source {
         protected $authId;
         public static $source;
-        public function __construct($info, $config) { $this->authId = $info['AuthId']; }
+        public function __construct(array $info, array &$config) { $this->authId = $info['AuthId']; }
         abstract public function authenticate(array &$state): void;
         public function logout(array &$state): void {}
         public static function getById($id) { return self::$source; }
@@ -69,10 +69,19 @@ namespace {
         $GLOBALS['profilecalls']++;
         return (object)['department' => 'Teaching'];
     }
+    class auth_plugin_base {
+        public $authtype;
+        public $config;
+    }
+    function get_config($component) { return (object)['simplesaml_coderoot' => $GLOBALS['root']]; }
     $root = sys_get_temp_dir() . '/samlidp-test-' . bin2hex(random_bytes(6));
     mkdir($root . '/user/profile', 0777, true);
     file_put_contents($root . '/config.php', '<?php');
     file_put_contents($root . '/user/profile/lib.php', '<?php');
+    mkdir($root . '/src');
+    mkdir($root . '/lib');
+    file_put_contents($root . '/src/_autoload.php', '<?php');
+    file_put_contents($root . '/lib/authlib.php', '<?php');
     try {
         $config = ['cookie_name' => 'TestCookie', 'moodle_coderoot' => $root,
             'login_url' => 'https://moodle.example/login/index.php?lang=en',
@@ -100,6 +109,15 @@ namespace {
             public function get_records($table, $conditions) { return [(object)['shortname' => 'department']]; }
         };
         define('MOODLE_INTERNAL', true);
+        $CFG = (object)['libdir' => $root . '/lib'];
+        require __DIR__ . '/../auth.php';
+        $autoloadproperty = new \ReflectionProperty(\auth_plugin_samlidp::class, 'simplesamlAutoloadPhp');
+        $autoloadproperty->setAccessible(true);
+        check($autoloadproperty->getValue(new \auth_plugin_samlidp()) === $root . '/src/_autoload.php',
+            'SimpleSAMLphp 2.x must use src/_autoload.php');
+        unlink($root . '/src/_autoload.php');
+        check($autoloadproperty->getValue(new \auth_plugin_samlidp()) === $root . '/lib/_autoload.php',
+            'Legacy autoloader fallback must be preserved');
         require __DIR__ . '/../classes/privacy/provider.php';
         $metadata = \auth_samlidp\privacy\provider::get_metadata(new \core_privacy\local\metadata\collection());
         check($metadata->fields['profile_field_department'] === 'privacy:metadata:profilefield',
@@ -136,6 +154,10 @@ namespace {
     } finally {
         unlink($root . '/user/profile/lib.php');
         unlink($root . '/config.php');
+        if (is_file($root . '/src/_autoload.php')) { unlink($root . '/src/_autoload.php'); }
+        unlink($root . '/lib/authlib.php');
+        rmdir($root . '/src');
+        rmdir($root . '/lib');
         rmdir($root . '/user/profile');
         rmdir($root . '/user');
         rmdir($root);

@@ -31,3 +31,6 @@ KNOWN ISSUES
 
 Compatibility review, patch comparison and staging checks: see COMPATIBILITY.md.
 Standalone regression checks (without Moodle or SimpleSAMLphp): php -n tests/compatibility.php
+SimpleSAMLphp 2.2 class-loading diagnostic (on the IdP server):
+php tools/check-simplesaml.php /absolute/path/to/simplesamlphp
+For "External isn't a subclass" errors, see the SimpleSAMLphp 2.2 section in COMPATIBILITY.md.

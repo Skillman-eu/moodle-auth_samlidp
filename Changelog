@@ -2,3 +2,4 @@
 2018061303 - implement hmac algorithm instead of sha1 for cookie value
 2024022300 - Support for Moodle-4.3 and php8.2
 2026101000 - Fix remaining PHP 8 privacy syntax, SimpleSAMLphp error paths, user lookup and return URL encoding
+2026103000 - Use SimpleSAMLphp 2.x autoloader; add 2.2 module-loading diagnostic and deployment guidance

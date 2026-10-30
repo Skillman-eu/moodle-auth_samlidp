@@ -45,6 +45,36 @@ These predate Moodle 4.5 and are not resolved by syntax compatibility fixes:
 - The module exports almost the entire user record and all custom profile fields. Review the IdP attribute release policy; narrowing it could break existing SP mappings.
 - Moodle bootstrap from a SimpleSAMLphp request and explicit PHP-session destruction remain integration-sensitive. Do not claim support for all later Moodle/SSP releases from this review.
 
+## SimpleSAMLphp 2.2 class-loading errors (2026-10-30)
+
+The 2.2 `Module::resolveClass()` constructs the module class name and calls `is_subclass_of()` without first checking `class_exists()`. Therefore "isn't a subclass" also means the class could not be autoloaded. This checkout's External already extends `\SimpleSAML\Auth\Source`; changing that inheritance is not a fix. The exact server cause cannot be established without inspecting its deployed files.
+
+The 2.2 module autoloader expects exactly:
+
+```
+<simplesaml-root>/modules/moodle/src/Auth/Source/External.php
+<simplesaml-root>/modules/moodle/public/resume.php
+```
+
+Copy or symlink the plugin's **moodle subdirectory** as `modules/moodle`, not the entire auth_samlidp directory. Replace obsolete `lib/Auth/Source` and `www` deployments with the current `src` and `public` layout. Preserve configuration, check case-sensitive names and web-server read/traverse permissions, and enable `'moodle' => true` inside `'module.enable'`. If SimpleSAMLphp has a custom module directory, use that directory instead of the default modules path. No Composer mapping is required for this manually installed module: 2.2 registers its own module autoloader.
+
+Run on the IdP host with its PHP runtime and SimpleSAMLphp configuration environment:
+
+```sh
+php /path/to/moodle/auth/samlidp/tools/check-simplesaml.php /path/to/simplesamlphp
+```
+
+It reports the resolved module directory, the actual loaded class file and parent, and runs the real SimpleSAMLphp resolver without authenticating a user. A CLI pass with a continuing web error points to differing configuration, permissions, PHP installations or stale OPcache; reload the relevant PHP-FPM/Apache workers after deploying the correct files. CLI does not prove that the web worker can read the same paths.
+
+A separate confirmed incompatibility is fixed here: Moodle's auth plugin now prefers **src/_autoload.php**, the entry point provided by SimpleSAMLphp 2.2, with lib/_autoload.php retained as a fallback. Set the Moodle SimpleSAMLphp code-root setting to the installation root, not public/. The regression suite checks both path selections. The supplied subclass error happens on the IdP side before this Moodle callback, so this autoloader-path fix alone does not resolve a wrongly deployed IdP module.
+
+Inspected upstream 2.2 `Module.php`, `_autoload_modules.php`, `_autoload.php` and `Auth/Source.php`. Its authenticate/logout signatures match this module. Syntax checks and standalone regression checks pass on PHP 8.1.5; the user's live installation has not been accessed.
+
+Upstream 2.2 sources:
+- https://github.com/simplesamlphp/simplesamlphp/blob/simplesamlphp-2.2/src/SimpleSAML/Module.php
+- https://github.com/simplesamlphp/simplesamlphp/blob/simplesamlphp-2.2/src/_autoload_modules.php
+- https://github.com/simplesamlphp/simplesamlphp/blob/simplesamlphp-2.2/src/_autoload.php
+
 ## Primary sources
 
 - PHP 8.0 removed curly-brace offsets: https://www.php.net/manual/en/migration80.incompatible.php
